@@ -1,0 +1,8 @@
+forbidden:
+  - 极限词
+  - 保证收益
+  - 绝对有效
+sensitive_replace:
+  赚钱: 变现
+  暴富: 提升收入
+  保证: 尽量
