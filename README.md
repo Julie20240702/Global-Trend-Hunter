@@ -48,7 +48,7 @@ uvicorn app:app --host 127.0.0.1 --port 8765 --reload
 ```
 
 打开：
-- `http://127.0.0.1:8765/run`
+- `http://127.0.0.1:8765
 
 页面包含两种模式：
 - 模式A：自动发现赛道并生成报告（默认取榜首赛道）
@@ -113,7 +113,7 @@ uvicorn app:app --host 127.0.0.1 --port 8765 --reload
 
 Open:
 
-· http://127.0.0.1:8765/run
+· http://127.0.0.1:8765
 
 The page includes two modes:
 
