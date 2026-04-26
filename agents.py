@@ -6,7 +6,12 @@ from dotenv import load_dotenv
 
 load_dotenv()
 MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-API_KEY = os.getenv("OPENAI_API_KEY", "")
+API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+BASE_URL = os.getenv("OPENAI_BASE_URL", os.getenv("BASE_URL", "")).strip()
+if BASE_URL:
+    BASE_URL = BASE_URL.rstrip("/")
+    if not BASE_URL.endswith("/v1"):
+        BASE_URL = f"{BASE_URL}/v1"
 
 def _mock_json(task: str) -> Dict[str, Any]:
     if task == "analyze":
@@ -40,20 +45,73 @@ def _mock_json(task: str) -> Dict[str, Any]:
         return {"passed": True, "risk_level": "low", "reasons": [], "fixes": []}
     return {}
 
+def _extract_text_from_resp(resp: Any) -> str:
+    if resp is None:
+        return ""
+    if isinstance(resp, str):
+        return resp.strip()
+    if isinstance(resp, dict):
+        try:
+            choices = resp.get("choices") or []
+            if choices:
+                msg = choices[0].get("message") or {}
+                content = msg.get("content", "")
+                return (content or "").strip()
+        except Exception:
+            pass
+        return ""
+
+    try:
+        choices = getattr(resp, "choices", None) or []
+        if choices:
+            message = getattr(choices[0], "message", None)
+            content = getattr(message, "content", "") if message is not None else ""
+            return (content or "").strip()
+    except Exception:
+        pass
+    return ""
+
+
 def _llm_json(system_prompt: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     if not API_KEY:
         return {}
-    client = OpenAI(api_key=API_KEY)
-    resp = client.chat.completions.create(
-        model=MODEL,
-        temperature=0.4,
-        messages=[
-            {"role": "system", "content": system_prompt},
+
+    client = OpenAI(api_key=API_KEY, base_url=BASE_URL) if BASE_URL else OpenAI(api_key=API_KEY)
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+    ]
+
+    try:
+        resp = client.chat.completions.create(
+            model=MODEL,
+            temperature=0.4,
+            messages=messages,
+            response_format={"type": "json_object"},
+        )
+        text = _extract_text_from_resp(resp)
+        return json.loads(text) if text else {}
+    except Exception:
+        pass
+
+    try:
+        fallback_messages = [
+            {"role": "system", "content": system_prompt + "。只输出严格JSON，不要Markdown，不要额外解释。"},
             {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
-        ],
-        response_format={"type": "json_object"},
-    )
-    return json.loads(resp.choices[0].message.content)
+        ]
+        resp = client.chat.completions.create(
+            model=MODEL,
+            temperature=0.2,
+            messages=fallback_messages,
+        )
+        text = _extract_text_from_resp(resp)
+        if text.startswith("```"):
+            text = text.strip("`")
+            if text.startswith("json"):
+                text = text[4:].strip()
+        return json.loads(text) if text else {}
+    except Exception:
+        return {}
 
 def call_agent_to_analyze(video: Dict[str, Any]) -> Dict[str, Any]:
     d = _llm_json("你是爆款分析师，输出JSON字段: hook_style,pacing,emotion_points,cta_style,audience,why_it_works", video)

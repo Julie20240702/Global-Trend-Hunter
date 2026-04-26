@@ -28,19 +28,29 @@ class TrendItem:
 
 
 def normalize_video(v: Dict[str, Any]) -> TrendItem:
-    return TrendItem(
+    metrics = dict(v.get("metrics", {}) or {})
+    for key in ["relevance_score", "engagement_score", "trend_signal_score", "copy_signal_score", "final_score"]:
+        if key in v:
+            metrics[key] = v[key]
+    item = TrendItem(
         id=str(v.get("id")),
         title=v.get("title", ""),
         platform=v.get("platform", "unknown"),
         url=v.get("url", ""),
-        metrics=v.get("metrics", {}),
+        metrics=metrics,
         transcript=v.get("transcript", ""),
         comments_sample=v.get("comments_sample", [])[:50],
     )
+    # 兼容新增展示字段
+    setattr(item, "title_zh", v.get("title_zh", ""))
+    setattr(item, "why_selected", v.get("why_selected", ""))
+    return item
 
 
 def score_trend(item: TrendItem) -> float:
     m = item.metrics or {}
+    if "final_score" in m:
+        return float(m.get("final_score", 0.0) or 0.0)
     views = m.get("views", 0)
     likes = m.get("likes", 0)
     comments = m.get("comments", 0)
@@ -80,6 +90,10 @@ def render_demo_report(records: List[Dict[str, Any]], niche: str) -> str:
         lines.append(f"### {i}. {r.get('title', '')}")
         lines.append(f"- 平台: {r.get('platform', '')}")
         lines.append(f"- 链接: {r.get('url', '')}")
+        if r.get("title_zh"):
+            lines.append(f"- 中文标题: {r.get('title_zh', '')}")
+        if r.get("why_selected"):
+            lines.append(f"- 入选原因: {r.get('why_selected', '')}")
         lines.append(
             f"- 指标: views={m.get('views',0)}, likes={m.get('likes',0)}, comments={m.get('comments',0)}, growth_24h={m.get('growth_24h',0)}"
         )
@@ -120,10 +134,10 @@ def render_demo_report(records: List[Dict[str, Any]], niche: str) -> str:
 
 
 DEFAULT_DISCOVERY_NICHES = [
-    "ai_tools",
+    "ai tools",
     "saas",
     "productivity",
-    "personal_finance",
+    "personal finance",
     "fitness",
     "gaming",
     "beauty",
@@ -172,9 +186,9 @@ def print_track_board(board: List[Dict[str, Any]]):
             print(f"     {s['url']}")
 
 
-def hunter_workflow(niche="tech_niche", top_k=20, out_path="output/demo_report.md"):
+def hunter_workflow(niche="tech_niche", top_k=20, out_path="output/demo_report.md", raw_data=None):
     init_db()
-    raw_data = get_trending_videos(niche)
+    raw_data = raw_data if raw_data is not None else get_trending_videos(niche)
     items = [normalize_video(v) for v in raw_data]
     ranked = sorted(items, key=score_trend, reverse=True)[:top_k]
 
@@ -188,6 +202,8 @@ def hunter_workflow(niche="tech_niche", top_k=20, out_path="output/demo_report.m
         record = {
             "video_id": item.id,
             "title": item.title,
+            "title_zh": getattr(item, "title_zh", ""),
+            "why_selected": getattr(item, "why_selected", ""),
             "platform": item.platform,
             "url": item.url,
             "metrics": item.metrics,
